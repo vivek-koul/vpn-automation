@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# VPN CLI — fully automated Red Hat VPN connection (HOTP)
-# Uses openvpn CLI directly, no GUI
+# VPN CLI — fully automated Red Hat VPN via Viscosity + HOTP
+# Uses Viscosity for connection, auto-fills credentials via UI scripting
 
 _VPN_KEYCHAIN_ACCOUNT="viscosity-vpn"
 _VPN_KEYCHAIN_PASSWORD="vpn-password"
@@ -9,8 +9,6 @@ _VPN_KEYCHAIN_USER="vpn-username"
 _VPN_KEYCHAIN_AUTHMODE="vpn-auth-mode"
 _VPN_KEYCHAIN_COUNTER="vpn-hotp-counter"
 _VPN_CONFIG_DIR="$HOME/Library/Application Support/Viscosity/OpenVPN"
-_VPN_OPENVPN="/opt/homebrew/opt/openvpn/sbin/openvpn"
-_VPN_PID_DIR="/tmp/.vpn-pids"
 
 vpn() {
     local cmd="${1:-status}"
@@ -31,7 +29,6 @@ vpn() {
                 return 1
             fi
 
-            # Check if already connected
             if _vpn_is_running "$match"; then
                 echo "'$match' is already connected."
                 return 0
@@ -59,19 +56,12 @@ vpn() {
             fi
 
             local next_counter=$((counter + 1))
+            _vpn_keychain_set "$_VPN_KEYCHAIN_COUNTER" "$next_counter" 2>/dev/null
 
             echo "Connecting to: $match"
             echo "OTP: $otp (counter: $counter)"
 
-            local config_id
-            config_id=$(_vpn_config_id "$match")
-            if [ -z "$config_id" ]; then
-                echo "Could not find config for '$match'."; return 1
-            fi
-
-            if _vpn_connect "$match" "$config_id" "$username" "$password" "$otp" "$auth_mode"; then
-                _vpn_keychain_set "$_VPN_KEYCHAIN_COUNTER" "$next_counter" 2>/dev/null
-            fi
+            _vpn_connect "$match" "$username" "$password" "$otp" "$auth_mode"
             ;;
 
         down|disconnect)
@@ -89,28 +79,11 @@ vpn() {
             ;;
 
         status|s)
-            printf "%-40s %s\n" "CONNECTION" "STATUS"
-            printf "%-40s %s\n" "----------" "------"
-            mkdir -p "$_VPN_PID_DIR"
-            for conf in "$_VPN_CONFIG_DIR"/*/config.conf; do
-                local name
-                name=$(grep '#viscosity name' "$conf" | sed 's/#viscosity name "//' | sed 's/"$//')
-                [ -z "$name" ] && continue
-                if _vpn_is_running "$name"; then
-                    printf "%-40s \033[32m%s\033[0m\n" "$name" "Connected"
-                else
-                    printf "%-40s %s\n" "$name" "Disconnected"
-                fi
-            done
+            _vpn_status
             ;;
 
         list|ls)
-            for conf in "$_VPN_CONFIG_DIR"/*/config.conf; do
-                local name
-                name=$(grep '#viscosity name' "$conf" | sed 's/#viscosity name "//' | sed 's/"$//')
-                [ -z "$name" ] && continue
-                echo "  $name"
-            done
+            _vpn_list
             ;;
 
         otp)
@@ -129,33 +102,15 @@ vpn() {
             _vpn_setup
             ;;
 
-        log)
-            local query="${1:-global}"
-            local match
-            match=$(_vpn_find "$query")
-            if [ -z "$match" ]; then
-                echo "No connection matching '$query'."; return 1
-            fi
-            local slug
-            slug=$(_vpn_slug "$match")
-            local logfile="/tmp/.vpn-${slug}.log"
-            if [ -f "$logfile" ]; then
-                tail -30 "$logfile"
-            else
-                echo "No log file for '$match'."
-            fi
-            ;;
-
         help|--help|-h)
             echo "Usage: vpn <command> [connection-name]"
             echo ""
             echo "Commands:"
-            echo "  up <name>      Connect with auto-auth (no GUI)"
+            echo "  up <name>      Connect via Viscosity with auto-auth"
             echo "  down [name]    Disconnect specific or all"
             echo "  status         Show connection states"
             echo "  list           List available connections"
             echo "  otp            Show next OTP (without consuming)"
-            echo "  log [name]     Show recent connection log"
             echo "  setup          Store credentials in Keychain"
             echo "  help           Show this help"
             echo ""
@@ -172,52 +127,9 @@ vpn() {
     esac
 }
 
-_vpn_slug() {
-    echo "$1" | tr '[:upper:] ()' '[:lower:]---' | tr -s '-' | sed 's/-$//'
-}
-
-_vpn_config_id() {
-    local target_name="$1"
-    for conf in "$_VPN_CONFIG_DIR"/*/config.conf; do
-        local name
-        name=$(grep '#viscosity name' "$conf" | sed 's/#viscosity name "//' | sed 's/"$//')
-        if [ "$name" = "$target_name" ]; then
-            basename "$(dirname "$conf")"
-            return 0
-        fi
-    done
-    return 1
-}
-
-_vpn_is_running() {
-    local name="$1"
-    local slug
-    slug=$(_vpn_slug "$name")
-    local pidfile="$_VPN_PID_DIR/${slug}.pid"
-    if [ -f "$pidfile" ]; then
-        local pid
-        pid=$(cat "$pidfile" 2>/dev/null || sudo cat "$pidfile" 2>/dev/null)
-        if [ -n "$pid" ] && ps -p "$pid" >/dev/null 2>&1; then
-            return 0
-        else
-            sudo rm -f "$pidfile" 2>/dev/null
-        fi
-    fi
-    return 1
-}
-
 _vpn_connect() {
-    local conn_name="$1" config_id="$2" username="$3" password="$4" otp="$5" auth_mode="$6"
-    local config_file="$_VPN_CONFIG_DIR/$config_id/config.conf"
-    local slug
-    slug=$(_vpn_slug "$conn_name")
-    local auth_file="/tmp/.vpn-auth-${slug}"
-    local logfile="/tmp/.vpn-${slug}.log"
-    local pidfile="$_VPN_PID_DIR/${slug}.pid"
+    local conn_name="$1" username="$2" password="$3" otp="$4" auth_mode="$5"
 
-    mkdir -p "$_VPN_PID_DIR"
-
-    # Build auth file
     local auth_password
     if [ "$auth_mode" = "separate" ]; then
         auth_password="$password"
@@ -225,121 +137,189 @@ _vpn_connect() {
         auth_password="${password}${otp}"
     fi
 
-    umask 077
-    printf '%s\n%s\n' "$username" "$auth_password" > "$auth_file"
-    chmod 600 "$auth_file"
+    osascript -e "tell application \"Viscosity\" to connect \"$conn_name\"" 2>/dev/null
 
-    local config_dir
-    config_dir="$_VPN_CONFIG_DIR/$config_id"
-
-    # Clean up old root-owned files
-    sudo rm -f "$logfile" "$pidfile" 2>/dev/null
-    touch "$logfile" "$pidfile"
-
-    # Build openvpn command
-    echo "Starting OpenVPN..."
-    sudo "$_VPN_OPENVPN" \
-        --cd "$config_dir" \
-        --config "$config_file" \
-        --auth-user-pass "$auth_file" \
-        --daemon "vpn-${slug}" \
-        --log "$logfile" \
-        --writepid "$pidfile" \
-        --auth-nocache \
-        --script-security 2 \
-        --up "$HOME/.vpn-dns.sh" \
-        --down "$HOME/.vpn-dns.sh" \
-        2>&1
-
-    # Make log/pid readable
-    sudo chmod 644 "$logfile" "$pidfile" 2>/dev/null
-
-    local rc=$?
-    # Clean up auth file immediately
-    rm -f "$auth_file"
-
-    if [ $rc -ne 0 ]; then
-        echo "Failed to start OpenVPN (exit code: $rc)."
-        [ -f "$logfile" ] && echo "Check: vpn log $slug"
-        return 1
-    fi
-
-    # Wait for connection
-    echo -n "Waiting"
+    echo -n "Waiting for auth dialog"
     local waited=0
-    while [ $waited -lt 20 ]; do
+    local dialog_found=0
+    while [ $waited -lt 15 ]; do
         sleep 1
         waited=$((waited + 1))
-        if [ -f "$logfile" ] && grep -q "Initialization Sequence Completed" "$logfile" 2>/dev/null; then
+
+        local state
+        state=$(_vpn_viscosity_state "$conn_name")
+        if [ "$state" = "Connected" ]; then
             echo ""
             echo "Connected!"
             return 0
         fi
-        if [ -f "$logfile" ] && grep -q "AUTH_FAILED" "$logfile" 2>/dev/null; then
+
+        local has_dialog
+        has_dialog=$(_vpn_check_dialog)
+        if [ "$has_dialog" = "yes" ]; then
+            dialog_found=1
+            break
+        fi
+        printf "."
+    done
+
+    if [ $dialog_found -eq 0 ]; then
+        echo ""
+        local state
+        state=$(_vpn_viscosity_state "$conn_name")
+        if [ "$state" = "Connected" ]; then
+            echo "Connected!"
+            return 0
+        fi
+        echo "Auth dialog did not appear. State: $state"
+        return 1
+    fi
+
+    echo " filling credentials..."
+    _vpn_fill_dialog "$auth_password" "$conn_name"
+
+    echo -n "Connecting"
+    waited=0
+    while [ $waited -lt 30 ]; do
+        sleep 1
+        waited=$((waited + 1))
+        local state
+        state=$(_vpn_viscosity_state "$conn_name")
+        case "$state" in
+            Connected)
+                echo ""
+                echo "Connected!"
+                return 0
+                ;;
+            Disconnected)
+                echo ""
+                echo "Connection failed (auth rejected)."
+                return 1
+                ;;
+        esac
+        local has_dialog
+        has_dialog=$(_vpn_check_dialog)
+        if [ "$has_dialog" = "yes" ]; then
             echo ""
-            echo "Authentication failed. Check password/OTP."
-            echo "Run 'vpn log ${slug}' for details."
-            sudo kill "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null
-            rm -f "$pidfile"
+            echo "Auth failed — dialog reappeared (wrong OTP or password)."
+            osascript -e "tell application \"System Events\" to tell process \"Viscosity\" to click button \"Cancel\" of window \"Viscosity - $conn_name\"" 2>/dev/null
+            sleep 0.5
+            osascript -e "tell application \"Viscosity\" to disconnect \"$conn_name\"" 2>/dev/null
             return 1
         fi
         printf "."
     done
 
     echo ""
-    if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-        echo "Still connecting... check 'vpn log ${slug}' or 'vpn status'."
-        return 0
-    else
-        echo "Connection failed. Run 'vpn log ${slug}' for details."
-        return 1
-    fi
+    echo "Timed out. State: $(_vpn_viscosity_state "$conn_name")"
+    return 1
+}
+
+_vpn_check_dialog() {
+    osascript 2>/dev/null <<'APPLESCRIPT'
+tell application "System Events"
+    tell process "Viscosity"
+        if (count of windows) > 0 then
+            repeat with w in windows
+                try
+                    if (count of text fields of w) >= 2 then
+                        return "yes"
+                    end if
+                end try
+            end repeat
+        end if
+    end tell
+end tell
+return "no"
+APPLESCRIPT
+}
+
+_vpn_fill_dialog() {
+    local pw="$1" conn_name="$2"
+    local win_name="Viscosity - ${conn_name}"
+    VPN_AUTH_PW="$pw" VPN_WIN="$win_name" osascript 2>/dev/null <<'APPLESCRIPT'
+set authPw to system attribute "VPN_AUTH_PW"
+set winName to system attribute "VPN_WIN"
+tell application "System Events"
+    tell process "Viscosity"
+        tell window winName
+            click text field 1
+            delay 0.2
+            keystroke authPw
+            delay 0.3
+            click button "OK"
+        end tell
+    end tell
+end tell
+APPLESCRIPT
+}
+
+_vpn_viscosity_state() {
+    local conn_name="$1"
+    osascript 2>/dev/null <<APPLESCRIPT
+tell application "Viscosity"
+    repeat with c in connections
+        if name of c is "$conn_name" then
+            return state of c as text
+        end if
+    end repeat
+end tell
+return "Unknown"
+APPLESCRIPT
+}
+
+_vpn_is_running() {
+    local name="$1"
+    local state
+    state=$(_vpn_viscosity_state "$name")
+    [ "$state" = "Connected" ]
 }
 
 _vpn_disconnect() {
     local name="$1"
-    local slug
-    slug=$(_vpn_slug "$name")
-    local pidfile="$_VPN_PID_DIR/${slug}.pid"
-
-    if [ -f "$pidfile" ]; then
-        local pid
-        pid=$(cat "$pidfile" 2>/dev/null || sudo cat "$pidfile" 2>/dev/null)
-        if [ -n "$pid" ] && ps -p "$pid" >/dev/null 2>&1; then
-            echo "Disconnecting: $name"
-            sudo kill "$pid"
-            sleep 1
-            sudo rm -f "$pidfile" 2>/dev/null
-            echo "Done."
-            return 0
-        fi
-        sudo rm -f "$pidfile" 2>/dev/null
+    if _vpn_is_running "$name"; then
+        echo "Disconnecting: $name"
+        osascript -e "tell application \"Viscosity\" to disconnect \"$name\"" 2>/dev/null
+        sleep 1
+        echo "Done."
+    else
+        echo "'$name' is not connected."
     fi
-    echo "'$name' is not connected."
 }
 
 _vpn_disconnect_all() {
-    local found=0
-    mkdir -p "$_VPN_PID_DIR"
-    for pidfile in "$_VPN_PID_DIR"/*.pid; do
-        [ -f "$pidfile" ] || continue
-        local pid
-        pid=$(cat "$pidfile" 2>/dev/null || sudo cat "$pidfile" 2>/dev/null)
-        if [ -n "$pid" ] && ps -p "$pid" >/dev/null 2>&1; then
-            local slug
-            slug=$(basename "$pidfile" .pid)
-            echo "Disconnecting: $slug"
-            sudo kill "$pid"
-            found=1
+    osascript -e 'tell application "Viscosity" to disconnectall' 2>/dev/null
+    echo "Disconnected all."
+}
+
+_vpn_status() {
+    printf "%-40s %s\n" "CONNECTION" "STATUS"
+    printf "%-40s %s\n" "----------" "------"
+    local names
+    names=$(osascript -e 'tell application "Viscosity"
+        set output to ""
+        repeat with c in connections
+            set output to output & name of c & tab & state of c & linefeed
+        end repeat
+        return output
+    end tell' 2>/dev/null)
+
+    while IFS=$'\t' read -r name state; do
+        [ -z "$name" ] && continue
+        if [ "$state" = "Connected" ]; then
+            printf "%-40s \033[32m%s\033[0m\n" "$name" "$state"
+        else
+            printf "%-40s %s\n" "$name" "$state"
         fi
-        sudo rm -f "$pidfile" 2>/dev/null
-    done
-    if [ $found -eq 0 ]; then
-        echo "No active connections."
-    else
-        sleep 1
-        echo "Done."
-    fi
+    done <<< "$names"
+}
+
+_vpn_list() {
+    osascript -e 'tell application "Viscosity"
+        repeat with c in connections
+            log "  " & name of c
+        end repeat
+    end tell' 2>&1 | sed 's/^.*: //'
 }
 
 _vpn_setup() {
@@ -389,7 +369,7 @@ _vpn_setup() {
     _vpn_keychain_set "$_VPN_KEYCHAIN_COUNTER" "$counter" 2>/dev/null
     _vpn_keychain_set "$_VPN_KEYCHAIN_AUTHMODE" "$auth_mode" 2>/dev/null
 
-    echo "Saved. Try: vpn up global"
+    echo "Saved. Try: vpn up pune"
 }
 
 _vpn_keychain_set() {
@@ -408,27 +388,35 @@ _vpn_find() {
     local query_lower
     query_lower=$(echo "$query" | tr '[:upper:]' '[:lower:]')
 
-    for conf in "$_VPN_CONFIG_DIR"/*/config.conf; do
-        local name
-        name=$(grep '#viscosity name' "$conf" | sed 's/#viscosity name "//' | sed 's/"$//')
+    # Get connection names from Viscosity
+    local names
+    names=$(osascript -e 'tell application "Viscosity"
+        set output to ""
+        repeat with c in connections
+            set output to output & name of c & linefeed
+        end repeat
+        return output
+    end tell' 2>/dev/null)
+
+    # Exact match first
+    while IFS= read -r name; do
         [ -z "$name" ] && continue
         local name_lower
         name_lower=$(echo "$name" | tr '[:upper:]' '[:lower:]')
         if [[ "$name_lower" == "$query_lower" ]]; then
             echo "$name"; return 0
         fi
-    done
+    done <<< "$names"
 
-    for conf in "$_VPN_CONFIG_DIR"/*/config.conf; do
-        local name
-        name=$(grep '#viscosity name' "$conf" | sed 's/#viscosity name "//' | sed 's/"$//')
+    # Partial match
+    while IFS= read -r name; do
         [ -z "$name" ] && continue
         local name_lower
         name_lower=$(echo "$name" | tr '[:upper:]' '[:lower:]')
         if [[ "$name_lower" == *"$query_lower"* ]]; then
             echo "$name"; return 0
         fi
-    done
+    done <<< "$names"
 }
 
 _vpn_completions() {
@@ -436,14 +424,16 @@ _vpn_completions() {
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=($(compgen -W "up down status list otp log setup help" -- "$cur"))
-    elif [[ "$prev" == "up" || "$prev" == "down" || "$prev" == "log" ]]; then
-        local conns=""
-        for conf in "$HOME/Library/Application Support/Viscosity/OpenVPN"/*/config.conf; do
-            local name
-            name=$(grep '#viscosity name' "$conf" 2>/dev/null | sed 's/#viscosity name "//' | sed 's/"$//')
-            [ -n "$name" ] && conns="$conns $name"
-        done
+        COMPREPLY=($(compgen -W "up down status list otp setup help" -- "$cur"))
+    elif [[ "$prev" == "up" || "$prev" == "down" ]]; then
+        local conns
+        conns=$(osascript -e 'tell application "Viscosity"
+            set output to ""
+            repeat with c in connections
+                set output to output & name of c & linefeed
+            end repeat
+            return output
+        end tell' 2>/dev/null)
         COMPREPLY=($(compgen -W "$conns" -- "$cur"))
     fi
 }

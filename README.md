@@ -1,70 +1,34 @@
 # Red Hat VPN CLI Automation — Setup Guide
 
-Automate Red Hat VPN connections from the terminal. No GUI, no manual password/OTP entry.
-Uses Viscosity's config files + OpenVPN CLI + macOS Keychain + auto-generated HOTP codes.
+Automate Red Hat VPN connections from the terminal. Zero manual password/OTP entry.
+Uses Viscosity + AppleScript UI scripting + macOS Keychain + auto-generated HOTP codes.
+
+## How It Works
+
+Viscosity's proprietary OpenVPN binary is required by the Red Hat VPN server — standard `openvpn` CLI fails authentication. This automation:
+1. Tells Viscosity to connect via AppleScript
+2. Waits for the auth dialog to appear
+3. Auto-fills password+OTP using UI scripting
+4. Clicks OK
 
 ## Prerequisites
 
 - macOS with Homebrew installed
-- Viscosity already installed and configured with Red Hat VPN connections
+- **Viscosity** already installed and configured with Red Hat VPN connections
 - Your Red Hat VPN username, password, and OTP QR code image
+- **Terminal** (or your terminal app) must have **Accessibility** permissions:
+  System Settings > Privacy & Security > Accessibility > enable your terminal app
 
 ## Step 1: Install Dependencies
 
 ```bash
-brew install oath-toolkit openvpn zbar
+brew install oath-toolkit zbar
 ```
 
 - `oath-toolkit` — generates 6-digit OTP codes from your HOTP secret
-- `openvpn` — the same VPN engine Viscosity uses internally, installed as a standalone CLI
 - `zbar` — decodes QR codes to extract your HOTP secret
 
-## Step 2: Create ~/.vpn-dns.sh
-
-```bash
-cat > ~/.vpn-dns.sh << 'SCRIPT'
-#!/bin/bash
-# OpenVPN DNS update script for macOS
-
-SCUTIL=/usr/sbin/scutil
-
-case "$script_type" in
-    up)
-        declare -a dns_servers
-        declare -a dns_domains
-
-        for opt in ${!foreign_option_*}; do
-            val="${!opt}"
-            case "$val" in
-                *DNS\ *)    dns_servers+=("${val##* }") ;;
-                *DOMAIN\ *) dns_domains+=("${val##* }") ;;
-            esac
-        done
-
-        if [ ${#dns_servers[@]} -gt 0 ]; then
-            $SCUTIL <<-EOF
-				d.init
-				d.add ServerAddresses * ${dns_servers[*]}
-				d.add SupplementalMatchDomains * ${dns_domains[*]}
-				d.add SupplementalMatchDomainsNoSearch # 1
-				set State:/Network/Service/openvpn/DNS
-			EOF
-        fi
-        ;;
-
-    down)
-        $SCUTIL <<-EOF
-			remove State:/Network/Service/openvpn/DNS
-		EOF
-        ;;
-esac
-SCRIPT
-chmod +x ~/.vpn-dns.sh
-```
-
-## Step 3: Create ~/.vpn.sh and ~/.vpn-keepalive.sh
-
-Clone the repo and copy the scripts:
+## Step 2: Clone and Install Scripts
 
 ```bash
 git clone https://github.com/vivek-koul/vpn-automation.git /tmp/vpn-automation
@@ -73,7 +37,7 @@ cp /tmp/vpn-automation/keepalive.sh ~/.vpn-keepalive.sh
 chmod +x ~/.vpn-keepalive.sh
 ```
 
-## Step 4: Source the Script and Add Aliases
+## Step 3: Source the Script and Add Aliases
 
 For bash:
 ```bash
@@ -95,16 +59,7 @@ EOF
 source ~/.zshrc
 ```
 
-## Step 5: Set Up Passwordless sudo for OpenVPN
-
-```bash
-echo "$USER ALL=(ALL) NOPASSWD: /opt/homebrew/opt/openvpn/sbin/openvpn, /bin/kill, /bin/rm -f /tmp/.vpn-*, /bin/chmod 644 /tmp/.vpn-*" | sudo tee /etc/sudoers.d/openvpn
-sudo chmod 440 /etc/sudoers.d/openvpn
-```
-
-You'll be prompted for your Mac password once — never again after that.
-
-## Step 6: Extract Your HOTP Secret from the QR Code
+## Step 4: Extract Your HOTP Secret from the QR Code
 
 Save your OTP QR code image (from Red Hat IdM) as `~/Downloads/QR.png`, then:
 
@@ -119,14 +74,14 @@ otpauth://hotp/OATH12345678?secret=ABCDEFGHIJK...&counter=1&digits=6&issuer=Red%
 
 Copy the `secret=` value (e.g., `ABCDEFGHIJK...`). That is your HOTP secret.
 
-## Step 7: Find Your Current HOTP Counter
+## Step 5: Find Your Current HOTP Counter
 
 If you've been using the token from your phone authenticator, the counter has advanced beyond 1.
 
-Open your authenticator app, find the Red Hat token (look for the name like `OATH........`), and note the current 6-digit code. Then run:
+Open your authenticator app, find the Red Hat token, and note the current 6-digit code. Then run:
 
 ```bash
-SECRET="YOUR_SECRET_FROM_STEP_6"
+SECRET="YOUR_SECRET_FROM_STEP_4"
 TARGET="THE_6_DIGIT_CODE"
 for i in $(seq 0 10000); do
     code=$(oathtool --hotp -b -c "$i" "$SECRET" 2>/dev/null)
@@ -139,7 +94,7 @@ done
 
 Your next unused counter = that number + 1.
 
-## Step 8: Store Credentials in Keychain
+## Step 6: Store Credentials in Keychain
 
 Replace the values with YOUR OWN credentials:
 
@@ -150,17 +105,27 @@ security add-generic-password -a "viscosity-vpn" -s "vpn-username" -w "YOUR_KERB
 # Password (hidden input)
 read -rsp "VPN Password: " p && security add-generic-password -a "viscosity-vpn" -s "vpn-password" -w "$p" && unset p && echo ""
 
-# HOTP secret (from Step 6)
+# HOTP secret (from Step 4)
 security add-generic-password -a "viscosity-vpn" -s "vpn-totp-secret" -w "YOUR_HOTP_SECRET"
 
-# Counter (from Step 7 — use match + 1)
+# Counter (from Step 5 — use match + 1)
 security add-generic-password -a "viscosity-vpn" -s "vpn-hotp-counter" -w "NEXT_COUNTER_VALUE"
 
 # Auth mode
 security add-generic-password -a "viscosity-vpn" -s "vpn-auth-mode" -w "combined"
 ```
 
-## Step 9: Set Up Auto-Reconnect (Optional)
+Or use the interactive setup: `vpn setup`
+
+## Step 7: Grant Accessibility Access
+
+The automation needs to fill Viscosity's auth dialog via UI scripting.
+
+1. Open **System Settings** > **Privacy & Security** > **Accessibility**
+2. Add and enable your terminal app (Terminal.app, iTerm2, etc.)
+3. If using the keepalive daemon, also add `/bin/bash` or your shell
+
+## Step 8: Set Up Auto-Reconnect (Optional)
 
 Install the LaunchAgent so VPN auto-connects on login and reconnects if it drops:
 
@@ -172,25 +137,23 @@ Edit `~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist`:
 - Change `/Users/vkoul/` paths to your own home directory
 - Change `pune` to your preferred default VPN connection
 
-Also edit `~/.vpn-keepalive.sh` line with `VPN_TARGET` if you want a different default.
-
 Load it:
 ```bash
 launchctl load ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist
 ```
 
-## Step 10: Test
+## Step 9: Test
 
 ```bash
-vpn up global
+vpn up pune
 ```
 
 Expected output:
 ```
-Connecting to: Red Hat Global VPN
+Connecting to: Pune (PNQ2)
 OTP: 123456 (counter: N)
-Starting OpenVPN...
-Waiting...........
+Waiting for auth dialog... filling credentials...
+Connecting.....
 Connected!
 ```
 
@@ -205,7 +168,7 @@ Connected!
 | `vpn status` | Show all connections with status |
 | `vpn list` | List available connection names |
 | `vpn otp` | Preview next OTP without consuming it |
-| `vpn log global` | View connection log (troubleshooting) |
+| `vpn setup` | Interactive credential setup |
 | `vpnon` | Enable auto-reconnect daemon |
 | `vpnoff` | Disable auto-reconnect daemon |
 
@@ -218,8 +181,9 @@ Connected!
   security delete-generic-password -a "viscosity-vpn" -s "vpn-auth-mode" 2>/dev/null
   security add-generic-password -a "viscosity-vpn" -s "vpn-auth-mode" -w "separate"
   ```
-- **If counter gets out of sync**, repeat Step 7, then:
+- **If counter gets out of sync**, repeat Step 5, then:
   ```bash
   security delete-generic-password -a "viscosity-vpn" -s "vpn-hotp-counter" 2>/dev/null
   security add-generic-password -a "viscosity-vpn" -s "vpn-hotp-counter" -w "NEW_COUNTER"
   ```
+- **Viscosity must be running** for connections to work. It runs as a menu bar app.
