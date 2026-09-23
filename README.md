@@ -61,7 +61,7 @@ This prints a URI like:
 otpauth://hotp/OATH12345678?secret=ABCDEFGHIJK...&counter=1&digits=6&issuer=YourOrg
 ```
 
-Note both the `secret=` value and the **`counter=`** value. You'll need them in Step 6.
+Note both the **`secret=`** value and the **`counter=`** value. You'll need them in Step 6.
 
 ## Step 5: Find Your Current HOTP Counter
 
