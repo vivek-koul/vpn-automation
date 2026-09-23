@@ -5,7 +5,7 @@ Uses Viscosity + AppleScript UI scripting + macOS Keychain + auto-generated HOTP
 
 ## Quick Setup (Recommended)
 
-For the fastest setup, run the one-step installer. It installs everything and creates **desktop apps** you can double-click — no terminal knowledge needed.
+For the fastest setup, run the one-step installer. It installs everything and creates **desktop shortcuts** you can double-click — no terminal knowledge needed after setup.
 
 ```bash
 git clone https://github.com/vivek-koul/vpn-automation.git /tmp/vpn-automation
@@ -15,12 +15,12 @@ bash /tmp/vpn-automation/setup.sh
 This will:
 1. Install dependencies (oath-toolkit, zbar)
 2. Install the VPN script
-3. Create **VPN Connect**, **VPN Disconnect**, and **VPN Status** apps on your Desktop
+3. Create **VPN Connect**, **VPN Disconnect**, and **VPN Status** shortcuts on your Desktop
 4. Walk you through credential setup
 
 After setup, just double-click **VPN Connect** on your Desktop to connect.
 
-> **Note:** You still need to grant Accessibility permissions (see Step 7 below) and have Viscosity running.
+> **Note:** You need to grant Accessibility permissions to your terminal app (see Step 7 below) and have Viscosity running.
 
 ---
 

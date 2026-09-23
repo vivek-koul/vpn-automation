@@ -243,9 +243,7 @@ set winName to system attribute "VPN_WIN"
 tell application "System Events"
     tell process "Viscosity"
         tell window winName
-            click text field 1
-            delay 0.2
-            keystroke authPw
+            set value of text field 1 to authPw
             delay 0.3
             click button "OK"
         end tell

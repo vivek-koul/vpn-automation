@@ -1,6 +1,6 @@
 #!/bin/bash
 # VPN Automation — one-step setup
-# Installs the vpn script, creates desktop apps, and runs credential setup
+# Installs the vpn script, creates desktop shortcuts, and runs credential setup
 
 set -e
 
@@ -35,42 +35,13 @@ else
     echo "  Already in $SHELL_RC"
 fi
 
-# 3. Create desktop apps
-echo "[3/5] Creating desktop apps..."
-
-# VPN Connect app
-osacompile -o ~/Desktop/"VPN Connect.app" <<'APPLESCRIPT'
-on run
-    set vpnScript to (POSIX path of (path to home folder)) & ".vpn.sh"
-
-    tell application "Terminal"
-        activate
-        do script "source " & quoted form of vpnScript & " && vpn up pune"
-    end tell
-end run
-APPLESCRIPT
-
-# VPN Disconnect app
-osacompile -o ~/Desktop/"VPN Disconnect.app" <<'APPLESCRIPT'
-on run
-    do shell script "osascript -e 'tell application \"Viscosity\" to disconnectall'"
-    display notification "All VPN connections disconnected" with title "VPN"
-end run
-APPLESCRIPT
-
-# VPN Status app
-osacompile -o ~/Desktop/"VPN Status.app" <<'APPLESCRIPT'
-on run
-    set vpnScript to (POSIX path of (path to home folder)) & ".vpn.sh"
-
-    tell application "Terminal"
-        activate
-        do script "source " & quoted form of vpnScript & " && vpn status"
-    end tell
-end run
-APPLESCRIPT
-
-echo "  Created: VPN Connect.app, VPN Disconnect.app, VPN Status.app on Desktop"
+# 3. Create desktop shortcuts
+echo "[3/5] Creating desktop shortcuts..."
+cp "$SCRIPT_DIR/VPN Connect.command" ~/Desktop/
+cp "$SCRIPT_DIR/VPN Disconnect.command" ~/Desktop/
+cp "$SCRIPT_DIR/VPN Status.command" ~/Desktop/
+chmod +x ~/Desktop/"VPN Connect.command" ~/Desktop/"VPN Disconnect.command" ~/Desktop/"VPN Status.command"
+echo "  Created: VPN Connect, VPN Disconnect, VPN Status on Desktop"
 
 # 4. Check Accessibility permissions
 echo "[4/5] Checking permissions..."
