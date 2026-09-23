@@ -33,29 +33,19 @@ brew install oath-toolkit zbar
 ```bash
 git clone https://github.com/vivek-koul/vpn-automation.git /tmp/vpn-automation
 cp /tmp/vpn-automation/vpn.sh ~/.vpn.sh
-cp /tmp/vpn-automation/keepalive.sh ~/.vpn-keepalive.sh
-chmod +x ~/.vpn-keepalive.sh
 ```
 
 ## Step 3: Source the Script and Add Aliases
 
 For bash:
 ```bash
-cat >> ~/.bashrc << 'EOF'
-source ~/.vpn.sh
-alias vpnoff='launchctl unload ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist'
-alias vpnon='launchctl load ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist'
-EOF
+echo 'source ~/.vpn.sh' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 For zsh:
 ```bash
-cat >> ~/.zshrc << 'EOF'
-source ~/.vpn.sh
-alias vpnoff='launchctl unload ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist'
-alias vpnon='launchctl load ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist'
-EOF
+echo 'source ~/.vpn.sh' >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -123,26 +113,8 @@ The automation needs to fill Viscosity's auth dialog via UI scripting.
 
 1. Open **System Settings** > **Privacy & Security** > **Accessibility**
 2. Add and enable your terminal app (Terminal.app, iTerm2, etc.)
-3. If using the keepalive daemon, also add `/bin/bash` or your shell
 
-## Step 8: Set Up Auto-Reconnect (Optional)
-
-Install the LaunchAgent so VPN auto-connects on login and reconnects if it drops:
-
-```bash
-cp /tmp/vpn-automation/vpn-keepalive.plist ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist
-```
-
-Edit `~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist`:
-- Change `/Users/vkoul/` paths to your own home directory
-- Change `pune` to your preferred default VPN connection
-
-Load it:
-```bash
-launchctl load ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist
-```
-
-## Step 9: Test
+## Step 8: Test
 
 ```bash
 vpn up pune
@@ -169,8 +141,6 @@ Connected!
 | `vpn list` | List available connection names |
 | `vpn otp` | Preview next OTP without consuming it |
 | `vpn setup` | Interactive credential setup |
-| `vpnon` | Enable auto-reconnect daemon |
-| `vpnoff` | Disable auto-reconnect daemon |
 
 ## Important Notes
 
