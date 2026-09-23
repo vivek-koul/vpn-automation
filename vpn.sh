@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VPN CLI — fully automated Red Hat VPN via Viscosity + HOTP
+# VPN CLI — fully automated VPN via Viscosity + HOTP
 # Uses Viscosity for connection, auto-fills credentials via UI scripting
 
 _VPN_KEYCHAIN_ACCOUNT="viscosity-vpn"
@@ -326,9 +326,10 @@ _vpn_setup() {
 
     local current_user
     current_user=$(_vpn_keychain_get "$_VPN_KEYCHAIN_USER" 2>/dev/null)
-    printf "Username [%s]: " "${current_user:-vkoul}"
+    printf "Username [%s]: " "${current_user}"
     read -r username
-    username="${username:-${current_user:-vkoul}}"
+    username="${username:-${current_user}}"
+    if [ -z "$username" ]; then echo "Username is required."; return 1; fi
 
     printf "Password (hidden): "
     read -rs password

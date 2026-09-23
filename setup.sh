@@ -13,7 +13,7 @@ if ! command -v brew &>/dev/null; then
     echo "Homebrew not found. Install it from https://brew.sh/ and re-run this script."
     exit 1
 fi
-brew install oath-toolkit zbar 2>/dev/null || true
+brew install oath-toolkit zbar || true
 
 # 2. Copy vpn script
 echo "[2/5] Installing vpn.sh..."
@@ -37,11 +37,26 @@ fi
 
 # 3. Create desktop shortcuts
 echo "[3/5] Creating desktop shortcuts..."
+echo ""
+echo "  Available VPN connections:"
+source ~/.vpn.sh
+vpn list 2>/dev/null
+echo ""
+printf "  Default connection name for desktop shortcut [pune]: "
+read -r default_conn
+default_conn="${default_conn:-pune}"
+
 cp "$SCRIPT_DIR/VPN Connect.command" ~/Desktop/
 cp "$SCRIPT_DIR/VPN Disconnect.command" ~/Desktop/
 cp "$SCRIPT_DIR/VPN Status.command" ~/Desktop/
 chmod +x ~/Desktop/"VPN Connect.command" ~/Desktop/"VPN Disconnect.command" ~/Desktop/"VPN Status.command"
+
+if ! grep -q 'VPN_DEFAULT_CONNECTION' "$SHELL_RC" 2>/dev/null; then
+    echo "export VPN_DEFAULT_CONNECTION=\"$default_conn\"" >> "$SHELL_RC"
+fi
+
 echo "  Created: VPN Connect, VPN Disconnect, VPN Status on Desktop"
+echo "  Default connection: $default_conn"
 
 # 4. Check Accessibility permissions
 echo "[4/5] Checking permissions..."
