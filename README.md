@@ -62,24 +62,37 @@ SCRIPT
 chmod +x ~/.vpn-dns.sh
 ```
 
-## Step 3: Create ~/.vpn.sh
+## Step 3: Create ~/.vpn.sh and ~/.vpn-keepalive.sh
 
-Copy the file `~/.vpn.sh` from my machine (or use `vpn setup` after creating it).
+Clone the repo and copy the scripts:
 
-The full script is large — get it from me directly or from: `scp vkoul@<my-mac>:~/.vpn.sh ~/`
+```bash
+git clone https://github.com/vivek-koul/vpn-automation.git /tmp/vpn-automation
+cp /tmp/vpn-automation/vpn.sh ~/.vpn.sh
+cp /tmp/vpn-automation/keepalive.sh ~/.vpn-keepalive.sh
+chmod +x ~/.vpn-keepalive.sh
+```
 
-## Step 4: Source the Script
+## Step 4: Source the Script and Add Aliases
 
 For bash:
 ```bash
-echo 'source ~/.vpn.sh' >> ~/.bashrc
+cat >> ~/.bashrc << 'EOF'
 source ~/.vpn.sh
+alias vpnoff='launchctl unload ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist'
+alias vpnon='launchctl load ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist'
+EOF
+source ~/.bashrc
 ```
 
 For zsh:
 ```bash
-echo 'source ~/.vpn.sh' >> ~/.zshrc
+cat >> ~/.zshrc << 'EOF'
 source ~/.vpn.sh
+alias vpnoff='launchctl unload ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist'
+alias vpnon='launchctl load ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist'
+EOF
+source ~/.zshrc
 ```
 
 ## Step 5: Set Up Passwordless sudo for OpenVPN
@@ -147,7 +160,26 @@ security add-generic-password -a "viscosity-vpn" -s "vpn-hotp-counter" -w "NEXT_
 security add-generic-password -a "viscosity-vpn" -s "vpn-auth-mode" -w "combined"
 ```
 
-## Step 9: Test
+## Step 9: Set Up Auto-Reconnect (Optional)
+
+Install the LaunchAgent so VPN auto-connects on login and reconnects if it drops:
+
+```bash
+cp /tmp/vpn-automation/vpn-keepalive.plist ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist
+```
+
+Edit `~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist`:
+- Change `/Users/vkoul/` paths to your own home directory
+- Change `pune` to your preferred default VPN connection
+
+Also edit `~/.vpn-keepalive.sh` line with `VPN_TARGET` if you want a different default.
+
+Load it:
+```bash
+launchctl load ~/Library/LaunchAgents/com.vkoul.vpn-keepalive.plist
+```
+
+## Step 10: Test
 
 ```bash
 vpn up global
@@ -174,6 +206,8 @@ Connected!
 | `vpn list` | List available connection names |
 | `vpn otp` | Preview next OTP without consuming it |
 | `vpn log global` | View connection log (troubleshooting) |
+| `vpnon` | Enable auto-reconnect daemon |
+| `vpnoff` | Disable auto-reconnect daemon |
 
 ## Important Notes
 
