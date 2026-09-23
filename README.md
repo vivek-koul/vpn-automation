@@ -1,11 +1,11 @@
-# Red Hat VPN CLI Automation — Setup Guide
+# VPN CLI Automation — Setup Guide
 
-Automate Red Hat VPN connections from the terminal. Zero manual password/OTP entry.
+Automate VPN connections from the terminal. Zero manual password/OTP entry.
 Uses Viscosity + AppleScript UI scripting + macOS Keychain + auto-generated HOTP codes.
 
 ## How It Works
 
-Viscosity's proprietary OpenVPN binary is required by the Red Hat VPN server — standard `openvpn` CLI fails authentication. This automation:
+Viscosity's proprietary OpenVPN binary is required by certain VPN servers — standard `openvpn` CLI fails authentication. This automation:
 1. Tells Viscosity to connect via AppleScript
 2. Waits for the auth dialog to appear
 3. Auto-fills password+OTP using UI scripting
@@ -14,8 +14,8 @@ Viscosity's proprietary OpenVPN binary is required by the Red Hat VPN server —
 ## Prerequisites
 
 - macOS with Homebrew installed
-- [Viscosity](https://www.sparklabs.com/viscosity/) installed and configured with your Red Hat VPN connections
-- Your Red Hat VPN username, password, and OTP QR code image
+- [Viscosity](https://www.sparklabs.com/viscosity/) installed and configured with your VPN connections
+- Your VPN username, password, and OTP QR code image
 - Terminal (or your terminal app) must have **Accessibility** permissions (see Step 7)
 
 ## Step 1: Install Dependencies
@@ -50,7 +50,7 @@ source ~/.zshrc
 
 ## Step 4: Extract Your HOTP Secret from the QR Code
 
-Save your OTP QR code image (from Red Hat IdM) as `~/Downloads/QR.png`, then:
+Save your OTP QR code image as `~/Downloads/QR.png`, then:
 
 ```bash
 zbarimg --quiet --raw ~/Downloads/QR.png
@@ -58,7 +58,7 @@ zbarimg --quiet --raw ~/Downloads/QR.png
 
 This prints a URI like:
 ```
-otpauth://hotp/OATH12345678?secret=ABCDEFGHIJK...&counter=1&digits=6&issuer=Red%20Hat
+otpauth://hotp/OATH12345678?secret=ABCDEFGHIJK...&counter=1&digits=6&issuer=YourOrg
 ```
 
 Note both the `secret=` value and the `counter=` value. You'll need them in Step 6.
@@ -69,7 +69,7 @@ Note both the `secret=` value and the `counter=` value. You'll need them in Step
 
 If you've been using the token from your phone authenticator, the counter on the server has advanced beyond the QR code's initial value. To find your current counter:
 
-1. Open your authenticator app and note the current 6-digit code for your Red Hat token
+1. Open your authenticator app and note the current 6-digit code for your VPN token
 2. Run:
 
 ```bash
@@ -109,12 +109,12 @@ security add-generic-password -a "viscosity-vpn" -s "vpn-totp-secret" -w "YOUR_H
 # HOTP counter (from Step 4 or Step 5)
 security add-generic-password -a "viscosity-vpn" -s "vpn-hotp-counter" -w "COUNTER_VALUE"
 
-# Auth mode: "combined" = password+OTP in one field (default for Red Hat)
+# Auth mode: "combined" = password+OTP in one field
 security add-generic-password -a "viscosity-vpn" -s "vpn-auth-mode" -w "combined"
 ```
 
 **Auth modes:**
-- `combined` — password and OTP are concatenated into a single string (e.g., `MyPassword123456`). This is the default for Red Hat VPN.
+- `combined` — password and OTP are concatenated into a single string (e.g., `MyPassword123456`). This is the most common mode.
 - `separate` — only the password is sent in the auth field. Use this if combined mode fails.
 
 ## Step 7: Grant Accessibility Access
@@ -147,7 +147,7 @@ Connected!
 | Command | Description |
 |---|---|
 | `vpn up pune` | Connect (fuzzy, case-insensitive match) |
-| `vpn up global` | Connect to Red Hat Global VPN |
+| `vpn up global` | Connect to Global VPN |
 | `vpn down` | Disconnect all connections |
 | `vpn down pune` | Disconnect a specific connection |
 | `vpn status` | Show all connections with status |
@@ -157,7 +157,7 @@ Connected!
 
 ## Troubleshooting
 
-- **Auth fails with "dialog reappeared"** — most likely HOTP counter desync. Generate a fresh QR code from Red Hat IdM, then repeat Steps 4-6.
+- **Auth fails with "dialog reappeared"** — most likely HOTP counter desync. Generate a fresh QR code from your identity management portal, then repeat Steps 4-6.
 - **Auth dialog does not appear** — make sure Viscosity is running and no other VPN connections are active (`vpn down` first).
 - **"osascript is not allowed assistive access"** — your terminal app needs Accessibility permissions (Step 7).
 - **Try "separate" auth mode** if combined mode consistently fails:
