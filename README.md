@@ -14,10 +14,9 @@ Viscosity's proprietary OpenVPN binary is required by the Red Hat VPN server —
 ## Prerequisites
 
 - macOS with Homebrew installed
-- **Viscosity** already installed and configured with Red Hat VPN connections
+- [Viscosity](https://www.sparklabs.com/viscosity/) installed and configured with your Red Hat VPN connections
 - Your Red Hat VPN username, password, and OTP QR code image
-- **Terminal** (or your terminal app) must have **Accessibility** permissions:
-  System Settings > Privacy & Security > Accessibility > enable your terminal app
+- Terminal (or your terminal app) must have **Accessibility** permissions (see Step 7)
 
 ## Step 1: Install Dependencies
 
@@ -25,17 +24,17 @@ Viscosity's proprietary OpenVPN binary is required by the Red Hat VPN server —
 brew install oath-toolkit zbar
 ```
 
-- `oath-toolkit` — generates 6-digit OTP codes from your HOTP secret
+- `oath-toolkit` — generates 6-digit HOTP codes
 - `zbar` — decodes QR codes to extract your HOTP secret
 
-## Step 2: Clone and Install Scripts
+## Step 2: Clone and Install the Script
 
 ```bash
 git clone https://github.com/vivek-koul/vpn-automation.git /tmp/vpn-automation
 cp /tmp/vpn-automation/vpn.sh ~/.vpn.sh
 ```
 
-## Step 3: Source the Script and Add Aliases
+## Step 3: Source the Script in Your Shell
 
 For bash:
 ```bash
@@ -62,17 +61,20 @@ This prints a URI like:
 otpauth://hotp/OATH12345678?secret=ABCDEFGHIJK...&counter=1&digits=6&issuer=Red%20Hat
 ```
 
-Copy the `secret=` value (e.g., `ABCDEFGHIJK...`). That is your HOTP secret.
+Note both the `secret=` value and the `counter=` value. You'll need them in Step 6.
 
 ## Step 5: Find Your Current HOTP Counter
 
-If you've been using the token from your phone authenticator, the counter has advanced beyond 1.
+> **Skip this step if you just generated a fresh QR code.** Use the `counter=` value from Step 4 directly.
 
-Open your authenticator app, find the Red Hat token, and note the current 6-digit code. Then run:
+If you've been using the token from your phone authenticator, the counter on the server has advanced beyond the QR code's initial value. To find your current counter:
+
+1. Open your authenticator app and note the current 6-digit code for your Red Hat token
+2. Run:
 
 ```bash
 SECRET="YOUR_SECRET_FROM_STEP_4"
-TARGET="THE_6_DIGIT_CODE"
+TARGET="THE_6_DIGIT_CODE_FROM_YOUR_PHONE"
 for i in $(seq 0 10000); do
     code=$(oathtool --hotp -b -c "$i" "$SECRET" 2>/dev/null)
     if [ "$code" = "$TARGET" ]; then
@@ -86,35 +88,46 @@ Your next unused counter = that number + 1.
 
 ## Step 6: Store Credentials in Keychain
 
-Replace the values with YOUR OWN credentials:
+You can use the interactive setup:
 
 ```bash
-# Username
-security add-generic-password -a "viscosity-vpn" -s "vpn-username" -w "YOUR_KERBEROS_USERNAME"
+vpn setup
+```
 
-# Password (hidden input)
+Or set each value manually:
+
+```bash
+# Username (your Kerberos ID)
+security add-generic-password -a "viscosity-vpn" -s "vpn-username" -w "YOUR_USERNAME"
+
+# Password (hidden input — will not echo to screen)
 read -rsp "VPN Password: " p && security add-generic-password -a "viscosity-vpn" -s "vpn-password" -w "$p" && unset p && echo ""
 
 # HOTP secret (from Step 4)
 security add-generic-password -a "viscosity-vpn" -s "vpn-totp-secret" -w "YOUR_HOTP_SECRET"
 
-# Counter (from Step 5 — use match + 1)
-security add-generic-password -a "viscosity-vpn" -s "vpn-hotp-counter" -w "NEXT_COUNTER_VALUE"
+# HOTP counter (from Step 4 or Step 5)
+security add-generic-password -a "viscosity-vpn" -s "vpn-hotp-counter" -w "COUNTER_VALUE"
 
-# Auth mode
+# Auth mode: "combined" = password+OTP in one field (default for Red Hat)
 security add-generic-password -a "viscosity-vpn" -s "vpn-auth-mode" -w "combined"
 ```
 
-Or use the interactive setup: `vpn setup`
+**Auth modes:**
+- `combined` — password and OTP are concatenated into a single string (e.g., `MyPassword123456`). This is the default for Red Hat VPN.
+- `separate` — only the password is sent in the auth field. Use this if combined mode fails.
 
 ## Step 7: Grant Accessibility Access
 
-The automation needs to fill Viscosity's auth dialog via UI scripting.
+The automation fills Viscosity's auth dialog via macOS UI scripting, which requires Accessibility permissions.
 
 1. Open **System Settings** > **Privacy & Security** > **Accessibility**
-2. Add and enable your terminal app (Terminal.app, iTerm2, etc.)
+2. Click **+** and add your terminal app (Terminal.app, iTerm2, etc.)
+3. Make sure the toggle is enabled
 
 ## Step 8: Test
+
+Make sure Viscosity is running (menu bar icon), then:
 
 ```bash
 vpn up pune
@@ -142,18 +155,24 @@ Connected!
 | `vpn otp` | Preview next OTP without consuming it |
 | `vpn setup` | Interactive credential setup |
 
-## Important Notes
+## Troubleshooting
 
-- **Do NOT use your phone authenticator app for this token after setup.** HOTP counters must stay in sync — using two devices will cause failures.
-- **Use YOUR OWN credentials.** Do not copy someone else's password, QR code, or counter.
-- **If auth fails**, try switching to "separate" auth mode:
+- **Auth fails with "dialog reappeared"** — most likely HOTP counter desync. Generate a fresh QR code from Red Hat IdM, then repeat Steps 4-6.
+- **Auth dialog does not appear** — make sure Viscosity is running and no other VPN connections are active (`vpn down` first).
+- **"osascript is not allowed assistive access"** — your terminal app needs Accessibility permissions (Step 7).
+- **Try "separate" auth mode** if combined mode consistently fails:
   ```bash
   security delete-generic-password -a "viscosity-vpn" -s "vpn-auth-mode" 2>/dev/null
   security add-generic-password -a "viscosity-vpn" -s "vpn-auth-mode" -w "separate"
   ```
-- **If counter gets out of sync**, repeat Step 5, then:
+- **Reset counter manually:**
   ```bash
   security delete-generic-password -a "viscosity-vpn" -s "vpn-hotp-counter" 2>/dev/null
   security add-generic-password -a "viscosity-vpn" -s "vpn-hotp-counter" -w "NEW_COUNTER"
   ```
+
+## Important Notes
+
+- **Do NOT use your phone authenticator app for this token after setup.** HOTP counters must stay in sync — using two devices will cause desync and auth failures.
+- **Use YOUR OWN credentials.** Do not copy someone else's password, QR code, or counter.
 - **Viscosity must be running** for connections to work. It runs as a menu bar app.
