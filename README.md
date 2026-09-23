@@ -13,7 +13,7 @@ Viscosity's proprietary OpenVPN binary is required by certain VPN servers — st
 
 ## Prerequisites
 
-- macOS with Homebrew installed
+- macOS with [Homebrew](https://brew.sh/) installed
 - [Viscosity](https://www.sparklabs.com/viscosity/) installed and configured with your VPN connections
 - Your VPN username, password, and OTP QR code image
 - Terminal (or your terminal app) must have **Accessibility** permissions (see Step 7)
