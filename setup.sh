@@ -71,7 +71,9 @@ echo ""
 echo "  Have your QR code image ready (download from your identity management portal)."
 echo ""
 source ~/.vpn.sh
+set +e
 _vpn_setup
+set -e
 
 echo ""
 echo "=== Setup Complete ==="
