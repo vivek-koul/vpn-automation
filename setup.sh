@@ -13,21 +13,30 @@ if ! xcode-select -p &>/dev/null; then
     xcode-select --install
     echo ""
     echo "  A popup will appear — click Install and wait for it to finish."
-    echo "  Then re-run this script: bash /tmp/vpn-automation/setup.sh"
+    echo "  Then re-run this script."
     exit 1
 fi
 
-# 1. Install dependencies
-echo "[1/6] Installing dependencies..."
+# 1. Clone repo if not already present
+REPO_DIR="/tmp/vpn-automation"
+if [ ! -d "$REPO_DIR" ]; then
+    echo "[1/7] Cloning repository..."
+    git clone https://github.com/vivek-koul/vpn-automation.git "$REPO_DIR"
+else
+    echo "[1/7] Repository already cloned."
+fi
+SCRIPT_DIR="$REPO_DIR"
+
+# 2. Install dependencies
+echo "[2/7] Installing dependencies..."
 if ! command -v brew &>/dev/null; then
     echo "Homebrew not found. Install it from https://brew.sh/ and re-run this script."
     exit 1
 fi
 brew install oath-toolkit zbar || true
 
-# 2. Copy vpn script
-echo "[2/6] Installing vpn.sh..."
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# 3. Copy vpn script
+echo "[3/7] Installing vpn.sh..."
 cp "$SCRIPT_DIR/vpn.sh" ~/.vpn.sh
 
 # Add to shell config if not already there
@@ -46,7 +55,7 @@ else
 fi
 
 # 3. Create desktop shortcuts
-echo "[3/6] Creating desktop shortcuts..."
+echo "[4/7] Creating desktop shortcuts..."
 echo ""
 echo "  Available VPN connections:"
 source ~/.vpn.sh
@@ -69,14 +78,14 @@ echo "  Created: VPN Connect, VPN Disconnect, VPN Status on Desktop"
 echo "  Default connection: $default_conn"
 
 # 4. Check Accessibility permissions
-echo "[4/6] Checking permissions..."
+echo "[5/7] Checking permissions..."
 echo "  Your terminal app needs Accessibility access for auto-fill to work."
 echo "  Go to: System Settings > Privacy & Security > Accessibility"
 echo "  Add and enable your terminal app (Terminal.app, iTerm2, etc.)"
 echo ""
 
 # 5. Run credential setup
-echo "[5/6] Credential setup..."
+echo "[6/7] Credential setup..."
 echo ""
 echo "  Have your QR code image ready (download from your identity management portal)."
 echo ""
@@ -86,7 +95,7 @@ _vpn_setup
 set -e
 
 # 6. Set desktop icons
-echo "[6/6] Setting desktop icons..."
+echo "[7/7] Setting desktop icons..."
 if command -v fileicon &>/dev/null; then
     ICON_DIR="/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources"
     fileicon set ~/Desktop/"VPN Connect.command" "$ICON_DIR/ConnectToIcon.icns" 2>/dev/null

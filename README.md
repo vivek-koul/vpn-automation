@@ -8,18 +8,17 @@ Uses Viscosity + AppleScript UI scripting + macOS Keychain + auto-generated HOTP
 For the fastest setup, run the one-step installer. It installs everything and creates **desktop shortcuts** you can double-click — no terminal knowledge needed after setup.
 
 ```bash
-# If you don't have Git/Xcode tools yet, run this first and follow the install prompt:
-xcode-select --install
-
-git clone https://github.com/vivek-koul/vpn-automation.git /tmp/vpn-automation
-bash /tmp/vpn-automation/setup.sh
+curl -sL https://raw.githubusercontent.com/vivek-koul/vpn-automation/main/setup.sh -o /tmp/vpn-setup.sh && bash /tmp/vpn-setup.sh
 ```
 
-This will:
-1. Install dependencies (oath-toolkit, zbar)
-2. Install the VPN script
-3. Create **VPN Connect**, **VPN Disconnect**, and **VPN Status** shortcuts on your Desktop
-4. Walk you through credential setup
+This single command handles everything:
+1. Install Xcode Command Line Tools (if needed)
+2. Clone the repository
+3. Install dependencies (oath-toolkit, zbar)
+4. Install the VPN script
+5. Create **VPN Connect**, **VPN Disconnect**, and **VPN Status** shortcuts on your Desktop
+6. Walk you through credential setup
+7. Set custom icons on desktop shortcuts
 
 After setup, just double-click **VPN Connect** on your Desktop to connect.
 
