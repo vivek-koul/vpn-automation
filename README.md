@@ -8,6 +8,9 @@ Uses Viscosity + AppleScript UI scripting + macOS Keychain + auto-generated HOTP
 For the fastest setup, run the one-step installer. It installs everything and creates **desktop shortcuts** you can double-click — no terminal knowledge needed after setup.
 
 ```bash
+# If you don't have Git/Xcode tools yet, run this first and follow the install prompt:
+xcode-select --install
+
 git clone https://github.com/vivek-koul/vpn-automation.git /tmp/vpn-automation
 bash /tmp/vpn-automation/setup.sh
 ```
