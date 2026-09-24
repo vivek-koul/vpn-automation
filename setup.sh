@@ -68,6 +68,14 @@ echo ""
 # 5. Run credential setup
 echo "[5/5] Credential setup..."
 echo ""
+echo "  You'll need your VPN credentials. To get your OTP secret:"
+echo "    1. Download your OTP QR code image from your identity management portal"
+echo "    2. Run: zbarimg --quiet --raw ~/Downloads/QR.png"
+echo "    3. Copy the 'secret=' value from the output"
+echo "    4. The 'counter=' value is your HOTP counter (use as-is for a fresh QR code)"
+echo ""
+echo "  Auth mode: choose 'combined' (default) — it concatenates password+OTP into one field."
+echo ""
 source ~/.vpn.sh
 _vpn_setup
 
