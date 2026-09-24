@@ -336,22 +336,60 @@ _vpn_setup() {
     echo ""
     if [ -z "$password" ]; then echo "Password is required."; return 1; fi
 
-    local current_secret
+    local current_secret secret counter
     current_secret=$(_vpn_keychain_get "$_VPN_KEYCHAIN_SECRET" 2>/dev/null)
-    if [ -n "$current_secret" ]; then
-        printf "OTP secret [****saved****]: "
-    else
-        printf "OTP secret (base32): "
-    fi
-    read -r secret
-    secret="${secret:-$current_secret}"
-    if [ -z "$secret" ]; then echo "OTP secret is required."; return 1; fi
-
     local current_counter
     current_counter=$(_vpn_keychain_get "$_VPN_KEYCHAIN_COUNTER" 2>/dev/null)
-    printf "HOTP counter [%s]: " "${current_counter:-1}"
-    read -r counter
-    counter="${counter:-${current_counter:-1}}"
+
+    if [ -n "$current_secret" ]; then
+        printf "OTP secret [****saved****]: "
+        read -r secret
+        secret="${secret:-$current_secret}"
+        printf "HOTP counter [%s]: " "${current_counter:-1}"
+        read -r counter
+        counter="${counter:-${current_counter:-1}}"
+    else
+        echo ""
+        echo "To extract your OTP secret, provide the path to your QR code image."
+        echo "  (Download it from your identity management portal first)"
+        echo ""
+        printf "Path to QR code image [~/Downloads/QR.png]: "
+        read -r qr_path
+        qr_path="${qr_path:-$HOME/Downloads/QR.png}"
+        qr_path="${qr_path/#\~/$HOME}"
+
+        if [ ! -f "$qr_path" ]; then
+            echo "File not found: $qr_path"
+            echo "  Download your QR code image and try again, or enter the secret manually."
+            printf "OTP secret (base32): "
+            read -r secret
+            if [ -z "$secret" ]; then echo "OTP secret is required."; return 1; fi
+            printf "HOTP counter [1]: "
+            read -r counter
+            counter="${counter:-1}"
+        else
+            echo "  Reading QR code..."
+            local qr_uri
+            qr_uri=$(zbarimg --quiet --raw "$qr_path" 2>/dev/null)
+            if [ -z "$qr_uri" ] || [[ "$qr_uri" != otpauth://* ]]; then
+                echo "  Could not decode QR code. Enter the secret manually."
+                printf "OTP secret (base32): "
+                read -r secret
+                if [ -z "$secret" ]; then echo "OTP secret is required."; return 1; fi
+                printf "HOTP counter [1]: "
+                read -r counter
+                counter="${counter:-1}"
+            else
+                secret=$(echo "$qr_uri" | sed -n 's/.*secret=\([^&]*\).*/\1/p')
+                counter=$(echo "$qr_uri" | sed -n 's/.*counter=\([^&]*\).*/\1/p')
+                counter="${counter:-1}"
+                echo "  Extracted secret: ${secret:0:4}****${secret: -4}"
+                echo "  Extracted counter: $counter"
+                echo ""
+            fi
+        fi
+    fi
+    if [ -z "$secret" ]; then echo "OTP secret is required."; return 1; fi
 
     echo "Auth mode: 1) combined (password+OTP)  2) separate"
     local current_mode
